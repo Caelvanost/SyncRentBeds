@@ -11,9 +11,9 @@ Float Property SyncPollSeconds = 2.0 Auto Hidden
 
 Function DebugLocalState(String reason)
     Float rentalState = GetActorValue("Variable09")
-    String message = "SyncRentBeds 0.1.3 [" + reason + "] Variable09=" + rentalState + " Bed=" + Bed
-    Debug.Notification(message)
-    Debug.Trace("[SyncRentBeds] " + message)
+    String debugText = "SyncRentBeds 0.1.3 [" + reason + "] Variable09=" + rentalState + " Bed=" + Bed
+    Debug.Notification(debugText)
+    Debug.Trace("[SyncRentBeds] " + debugText)
 EndFunction
 
 Function ApplyLocalRentalState(String reason = "poll")

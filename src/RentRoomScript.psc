@@ -8,10 +8,10 @@ WIFunctionsScript Property WI Auto
 {Pointer to WIFunctionsScript attached to the WI quest.}
 
 Float Property SyncPollSeconds = 2.0 Auto Hidden
-Integer Property ZeroPollsToRelease = 15 Auto Hidden
+Int Property ZeroPollsToRelease = 15 Auto Hidden
 
 Bool RentalLatched = False
-Integer ConsecutiveZeroPolls = 0
+Int ConsecutiveZeroPolls = 0
 
 Function ApplyLocalOwnership(String reason = "poll")
     If Bed == None
@@ -36,7 +36,7 @@ Function ObserveRentalState(String reason = "poll")
 
         If !RentalLatched
             RentalLatched = True
-            Debug.Notification("SyncRentBeds 0.1.4: shared rental detected")
+            Debug.Notification("SyncRentBeds 0.1.5: shared rental detected")
             Debug.Trace("[SyncRentBeds] Rental latched locally. reason=" + reason + " Variable09=" + rentalState + " Bed=" + Bed)
         EndIf
     ElseIf RentalLatched
@@ -46,7 +46,7 @@ Function ObserveRentalState(String reason = "poll")
         If ConsecutiveZeroPolls >= ZeroPollsToRelease
             RentalLatched = False
             ConsecutiveZeroPolls = 0
-            Debug.Notification("SyncRentBeds 0.1.4: shared rental released")
+            Debug.Notification("SyncRentBeds 0.1.5: shared rental released")
             Debug.Trace("[SyncRentBeds] Rental latch released after sustained Variable09=0. Bed=" + Bed)
         EndIf
     EndIf
@@ -60,7 +60,7 @@ Function StartLocalSync(String reason = "start")
 EndFunction
 
 Function RentRoom(DialogueGenericScript pQuestScript)
-    Debug.Notification("SyncRentBeds 0.1.4: RentRoom intercepted")
+    Debug.Notification("SyncRentBeds 0.1.5: RentRoom intercepted")
     Debug.Trace("[SyncRentBeds] RentRoom intercepted")
 
     RentalLatched = True

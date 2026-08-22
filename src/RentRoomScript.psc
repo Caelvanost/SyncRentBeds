@@ -8,40 +8,63 @@ WIFunctionsScript Property WI Auto
 {Pointer to WIFunctionsScript attached to the WI quest.}
 
 Float Property SyncPollSeconds = 2.0 Auto Hidden
+Integer Property ZeroPollsToRelease = 15 Auto Hidden
 
-Function DebugLocalState(String reason)
-    Float rentalState = GetActorValue("Variable09")
-    String debugText = "SyncRentBeds 0.1.3 [" + reason + "] Variable09=" + rentalState + " Bed=" + Bed
-    Debug.Notification(debugText)
-    Debug.Trace("[SyncRentBeds] " + debugText)
-EndFunction
+Bool RentalLatched = False
+Integer ConsecutiveZeroPolls = 0
 
-Function ApplyLocalRentalState(String reason = "poll")
+Function ApplyLocalOwnership(String reason = "poll")
     If Bed == None
-        Debug.Trace("[SyncRentBeds] ApplyLocalRentalState skipped: Bed is None")
+        Debug.Trace("[SyncRentBeds] ApplyLocalOwnership skipped: Bed is None")
         Return
     EndIf
 
-    Float rentalState = GetActorValue("Variable09")
-
-    If rentalState >= 1.0
+    If RentalLatched
         Bed.SetActorOwner(Game.GetPlayer().GetActorBase())
-        Debug.Trace("[SyncRentBeds] Applied rented bed ownership to local player. reason=" + reason + " Variable09=" + rentalState + " Bed=" + Bed)
+        Debug.Trace("[SyncRentBeds] Local rented-bed ownership applied. reason=" + reason + " Bed=" + Bed)
     Else
         Bed.SetActorOwner((self as Actor).GetActorBase())
-        Debug.Trace("[SyncRentBeds] Restored/kept innkeeper ownership locally. reason=" + reason + " Variable09=" + rentalState + " Bed=" + Bed)
+        Debug.Trace("[SyncRentBeds] Innkeeper ownership applied. reason=" + reason + " Bed=" + Bed)
     EndIf
 EndFunction
 
+Function ObserveRentalState(String reason = "poll")
+    Float rentalState = GetActorValue("Variable09")
+
+    If rentalState >= 1.0
+        ConsecutiveZeroPolls = 0
+
+        If !RentalLatched
+            RentalLatched = True
+            Debug.Notification("SyncRentBeds 0.1.4: shared rental detected")
+            Debug.Trace("[SyncRentBeds] Rental latched locally. reason=" + reason + " Variable09=" + rentalState + " Bed=" + Bed)
+        EndIf
+    ElseIf RentalLatched
+        ConsecutiveZeroPolls += 1
+        Debug.Trace("[SyncRentBeds] Ignoring transient Variable09=0 while latched. reason=" + reason + " zeroPolls=" + ConsecutiveZeroPolls + "/" + ZeroPollsToRelease + " Bed=" + Bed)
+
+        If ConsecutiveZeroPolls >= ZeroPollsToRelease
+            RentalLatched = False
+            ConsecutiveZeroPolls = 0
+            Debug.Notification("SyncRentBeds 0.1.4: shared rental released")
+            Debug.Trace("[SyncRentBeds] Rental latch released after sustained Variable09=0. Bed=" + Bed)
+        EndIf
+    EndIf
+
+    ApplyLocalOwnership(reason)
+EndFunction
+
 Function StartLocalSync(String reason = "start")
-    DebugLocalState(reason)
-    ApplyLocalRentalState(reason)
+    ObserveRentalState(reason)
     RegisterForSingleUpdate(SyncPollSeconds)
 EndFunction
 
 Function RentRoom(DialogueGenericScript pQuestScript)
-    Debug.Notification("SyncRentBeds 0.1.3: RentRoom intercepted")
+    Debug.Notification("SyncRentBeds 0.1.4: RentRoom intercepted")
     Debug.Trace("[SyncRentBeds] RentRoom intercepted")
+
+    RentalLatched = True
+    ConsecutiveZeroPolls = 0
 
     Bed.SetActorOwner(Game.GetPlayer().GetActorBase())
     RegisterForSingleUpdateGameTime(pQuestScript.RentHours)
@@ -55,27 +78,28 @@ Function RentRoom(DialogueGenericScript pQuestScript)
 EndFunction
 
 Function ClearRoom()
+    RentalLatched = False
+    ConsecutiveZeroPolls = 0
+
     Bed.SetActorOwner((self as Actor).GetActorBase())
     UnregisterForUpdateGameTime()
     SetActorValue("Variable09", 0.0)
 
-    Debug.Trace("[SyncRentBeds] Rental expired; restored innkeeper ownership for " + Bed)
+    Debug.Trace("[SyncRentBeds] Rental expired locally; latch cleared and innkeeper ownership restored for " + Bed)
 EndFunction
 
 Event OnCellAttach()
-    Debug.Notification("SyncRentBeds 0.1.3: OnCellAttach")
     Debug.Trace("[SyncRentBeds] Innkeeper cell attached; starting local rental sync")
     StartLocalSync("OnCellAttach")
 EndEvent
 
 Event OnCellDetach()
     UnregisterForUpdate()
-    Debug.Trace("[SyncRentBeds] Innkeeper cell detached; stopped local rental sync")
+    Debug.Trace("[SyncRentBeds] Innkeeper cell detached; stopped local rental polling")
 EndEvent
 
 Event OnUpdate()
-    DebugLocalState("OnUpdate")
-    ApplyLocalRentalState("OnUpdate")
+    ObserveRentalState("OnUpdate")
     RegisterForSingleUpdate(SyncPollSeconds)
 EndEvent
 

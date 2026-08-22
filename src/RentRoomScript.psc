@@ -18,17 +18,17 @@ Faction Function GetPlayerBedOwnershipFaction()
 EndFunction
 
 Function RentRoom(DialogueGenericScript pQuestScript)
-    Debug.Notification("SyncRentBeds: RentRoom intercepted")
     Debug.Trace("[SyncRentBeds] RentRoom intercepted")
 
     Faction sharedBedFaction = GetPlayerBedOwnershipFaction()
 
     If sharedBedFaction != None
-        ; Vanilla assigns the bed directly to Game.GetPlayer().GetActorBase().
-        ; That actor-specific ownership does not map cleanly to multiple STR players.
-        ; PlayerBedOwnership is a vanilla faction intended for player-accessible beds.
+        ; Mark rented beds with Skyrim's dedicated player-bed ownership faction.
+        ; The native SyncRentBeds plugin recognizes this exact owner and grants
+        ; the local player a one-shot activation bypass without opening the bed
+        ; to ordinary NPCs.
         Bed.SetFactionOwner(sharedBedFaction)
-        Debug.Trace("[SyncRentBeds] Rented bed set to PlayerBedOwnership faction: " + Bed)
+        Debug.Trace("[SyncRentBeds] Rented bed marked PlayerBedOwnership: " + Bed)
     Else
         ; Safe fallback: preserve vanilla behaviour if the faction cannot be resolved.
         Bed.SetActorOwner(Game.GetPlayer().GetActorBase())

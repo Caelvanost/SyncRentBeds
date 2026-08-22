@@ -18,6 +18,9 @@ Faction Function GetPlayerBedOwnershipFaction()
 EndFunction
 
 Function RentRoom(DialogueGenericScript pQuestScript)
+    Debug.Notification("SyncRentBeds: RentRoom intercepted")
+    Debug.Trace("[SyncRentBeds] RentRoom intercepted")
+
     Faction sharedBedFaction = GetPlayerBedOwnershipFaction()
 
     If sharedBedFaction != None

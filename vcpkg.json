@@ -1,7 +1,7 @@
 {
   "name": "sync-rent-beds",
-  "version-string": "0.2.0",
+  "version-string": "0.2.1",
   "dependencies": [
-    "commonlibsse-ng-flatrim"
+    "commonlibsse-ng"
   ]
 }

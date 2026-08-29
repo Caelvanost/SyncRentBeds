@@ -4,57 +4,92 @@ Compatibility prototype for **Skyrim Special Edition + Skyrim Together Reborn**.
 
 ## Problem
 
-Vanilla `RentRoomScript` temporarily assigns a rented inn bed directly to the local player's ActorBase. In Skyrim Together Reborn, testing indicates that the innkeeper's rental state (`Variable09`) can be observed by remote clients, while the bed reference ownership itself is not synchronized.
+Vanilla `RentRoomScript` assigns a rented inn bed to the local player's ActorBase. In Skyrim Together Reborn, testing shows that the remote client can observe enough of the innkeeper rental state (`Variable09`) to know a room has been rented, while the bed reference ownership itself is not reliably synchronized.
 
-This produces a split state: the second player can be told that the room has already been rented, but the same bed can still be owned by the innkeeper on that client and remain unusable.
+The Papyrus-only 0.1.x prototypes proved two things:
 
-Further testing showed that `Variable09` can oscillate between `1.0` and `0.0` on a remote client while the room is still effectively rented.
+- Player2 can gain access if the bed ownership is rewritten locally;
+- STR/Skyrim can then rewrite that ownership back to the innkeeper, producing visible `Owned` / available oscillation.
 
-## v0.1.4 prototype solution
+Continuously fighting ownership with Papyrus polling is therefore not suitable for the final implementation.
 
-SyncRentBeds reconstructs rented-bed ownership locally on every client and now uses a local latch so transient `Variable09=0` updates do not revoke access:
+## v0.2.0 native prototype
 
-- the client that rents the room uses the normal player ActorBase ownership;
-- while the innkeeper is loaded, the script checks `Variable09` every 2 seconds;
-- the first observed `Variable09 >= 1` latches the room as rented on that client;
-- while latched, the bed remains owned by that client's local player ActorBase even if `Variable09` temporarily returns to `0`;
-- a single `Variable09 >= 1` resets the release counter;
-- the latch is released only after 15 consecutive `Variable09=0` polls (about 30 seconds), or immediately when local vanilla `ClearRoom()` runs;
-- polling starts when the innkeeper's cell attaches and stops when it detaches;
-- the normal room price, rental timer, dialogue state, and `WI.ShowPlayerRoom` flow are preserved.
+v0.2.0 moves access handling into an SKSE/CommonLibSSE-NG plugin.
 
-This means Player1 can locally see the bed as owned by Kahel while Player2 locally sees the same rented bed as owned by Elir. NPCs do not receive public access because the bed is never made ownerless.
+Papyrus now has only two responsibilities:
+
+1. preserve Bethesda's normal rental flow on the client that actually rents;
+2. observe the STR-visible `Variable09` state and mark/unmark the associated bed through a tiny native bridge.
+
+Papyrus no longer rewrites remote-client bed ownership every two seconds.
+
+The native plugin listens for SKSE crosshair changes. When the local player targets a bed that has been marked as rented, the plugin temporarily gives that reference local-player ownership for the duration of the crosshair interaction, so Skyrim should present it as usable and allow activation. When the crosshair leaves the bed, the previous owner is restored. If STR or another mod changes ownership while the temporary override is active, SyncRentBeds avoids overwriting that newer external state during restoration.
+
+This first 0.2.0 implementation deliberately avoids a global `TESObjectREFR::IsCrimeToActivate()` replacement. CommonLibSSE-NG exposes that engine function, but globally replacing it would affect every activatable reference in the game and requires a carefully preserved original call path. The crosshair-scoped prototype gives us a much narrower and safer test surface.
 
 ## Requirements
 
 - Skyrim Special Edition / Anniversary Edition
+- SKSE
+- Address Library compatible with the installed Skyrim runtime
 - Skyrim Together Reborn for the intended co-op use case
 
-The v0.1.4 prototype is **Papyrus-only**. It does not require an SKSE DLL or ESP.
+## Files
 
-## Compatibility
+The installed package must contain:
 
-SyncRentBeds overrides Bethesda's `RentRoomScript.pex`, so it conflicts with mods that also replace that script. Ensure SyncRentBeds wins the file conflict for `Data/Scripts/RentRoomScript.pex`.
+```text
+Data/
+├── Scripts/
+│   ├── RentRoomScript.pex
+│   └── SyncRentBedsNative.pex
+└── SKSE/
+    └── Plugins/
+        └── SyncRentBeds.dll
+```
 
-When compiling, put the project source directory before the vanilla source directory in the Papyrus import path:
+## Papyrus build
+
+Compile both project scripts. The project source directory must appear before the vanilla source directory because Skyrim also ships `RentRoomScript.psc`:
 
 ```text
 -i="$Project\src;$VanillaSource"
 ```
 
-This is important because both directories contain a `RentRoomScript.psc`.
+## Native build
 
-## Test plan
+The native plugin uses CommonLibSSE-NG through vcpkg (`commonlibsse-ng-flatrim`).
 
-1. Install the compiled script on both players.
+Typical configuration:
+
+```powershell
+cmake -S . -B build `
+    -G "Visual Studio 18 2026" `
+    -A x64 `
+    -DCMAKE_TOOLCHAIN_FILE="C:\dev\vcpkg\scripts\buildsystems\vcpkg.cmake"
+
+cmake --build build --config Release
+```
+
+## Compatibility
+
+SyncRentBeds overrides Bethesda's `RentRoomScript.pex`, so it conflicts with mods that also replace that script. Ensure SyncRentBeds wins the file conflict for `Data/Scripts/RentRoomScript.pex`.
+
+The native plugin modifies ownership only while the local player's crosshair is on a bed that Papyrus has explicitly marked as rented. Ordinary beds and NPC interactions are untouched.
+
+## v0.2.0 test plan
+
+1. Install the compiled Papyrus scripts and DLL on both players.
 2. Player1 enters an inn and rents the room.
-3. Confirm Player1 can use the bed.
-4. Have Player2 join the STR server after Player1 has already rented the room.
-5. Enter/load the inn on Player2 and wait a few seconds for the local sync pass.
-6. Inspect the bed: it should be locally owned by Player2's character rather than the innkeeper.
-7. Confirm Player2 can activate / lie in the bed.
-8. Observe that transient `Variable09=0` updates no longer flip ownership back to the innkeeper.
-9. Confirm ordinary NPCs are still excluded by player-specific ownership.
-10. After the rental genuinely expires, confirm the latch releases and ownership returns to the innkeeper.
+3. Confirm Player1 can use the rented bed normally.
+4. Have Player2 join the STR server after Player1 already rented the room.
+5. Enter/load the inn on Player2 and wait a few seconds for `Variable09` observation.
+6. Aim at the rented bed on Player2.
+7. Check whether the prompt remains available rather than alternating to `Owned`.
+8. Activate the bed once; no interaction spamming should be necessary.
+9. Move the crosshair away and back to the bed several times.
+10. Confirm ordinary NPC-owned beds that were not rented remain `Owned`.
+11. Check `Documents/My Games/Skyrim Special Edition/SKSE/SyncRentBeds.log` for `Marked rented bed`, `Temporarily granted local access`, and activation-event lines.
 
-Papyrus logging uses `[SyncRentBeds]` markers for rental interception, latch activation/release, transient zero suppression, cell attach/detach, local ownership application, and rental cleanup.
+If the prompt is still calculated as `Owned` before the SKSE crosshair event applies the temporary access, the next prototype will move the same rented-bed predicate into a lower-level ownership/crime check rather than widening the scope of the workaround.

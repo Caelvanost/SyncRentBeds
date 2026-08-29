@@ -13,9 +13,9 @@ The Papyrus-only 0.1.x prototypes proved two things:
 
 Continuously fighting ownership with Papyrus polling is therefore not suitable for the final implementation.
 
-## v0.2.0 native prototype
+## v0.2.x native prototype
 
-v0.2.0 moves access handling into an SKSE/CommonLibSSE-NG plugin.
+v0.2.x moves access handling into an SKSE/CommonLibSSE-NG plugin.
 
 Papyrus now has only two responsibilities:
 
@@ -26,7 +26,7 @@ Papyrus no longer rewrites remote-client bed ownership every two seconds.
 
 The native plugin listens for SKSE crosshair changes. When the local player targets a bed that has been marked as rented, the plugin temporarily gives that reference local-player ownership for the duration of the crosshair interaction, so Skyrim should present it as usable and allow activation. When the crosshair leaves the bed, the previous owner is restored. If STR or another mod changes ownership while the temporary override is active, SyncRentBeds avoids overwriting that newer external state during restoration.
 
-This first 0.2.0 implementation deliberately avoids a global `TESObjectREFR::IsCrimeToActivate()` replacement. CommonLibSSE-NG exposes that engine function, but globally replacing it would affect every activatable reference in the game and requires a carefully preserved original call path. The crosshair-scoped prototype gives us a much narrower and safer test surface.
+This implementation deliberately avoids a global `TESObjectREFR::IsCrimeToActivate()` replacement. CommonLibSSE-NG exposes that engine function, but globally replacing it would affect every activatable reference in the game and requires a carefully preserved original call path. The crosshair-scoped prototype gives us a much narrower and safer test surface.
 
 ## Requirements
 
@@ -49,19 +49,43 @@ Data/
         └── SyncRentBeds.dll
 ```
 
-## Papyrus build
+## Release build
 
-Compile both project scripts. The project source directory must appear before the vanilla source directory because Skyrim also ships `RentRoomScript.psc`:
+The repository includes `build/_release.bat`, which automates the complete release build:
+
+1. CMake configuration;
+2. Release build of the SKSE DLL;
+3. compilation of both Papyrus scripts;
+4. copy of the DLL into the package staging directory;
+5. creation of `dist/SyncRentBeds-<version>.zip`.
+
+From PowerShell:
+
+```powershell
+.\build\_release.bat
+```
+
+The script expects the development environment currently used for this project:
+
+```text
+Skyrim: C:\Games\Steam\steamapps\common\Skyrim Special Edition
+vcpkg: C:\dev\vcpkg
+Generator: Visual Studio 18 2026, x64
+```
+
+Papyrus compilation keeps the project source directory before the vanilla source directory:
 
 ```text
 -i="$Project\src;$VanillaSource"
 ```
 
+This is required because Skyrim also ships `RentRoomScript.psc`.
+
 ## Native build
 
-The native plugin uses CommonLibSSE-NG through vcpkg (`commonlibsse-ng-flatrim`).
+The native plugin uses CommonLibSSE-NG through vcpkg (`commonlibsse-ng`) and the Colorglass vcpkg registry defined by `vcpkg-configuration.json`.
 
-Typical configuration:
+For manual builds, the equivalent commands are:
 
 ```powershell
 cmake -S . -B build `
@@ -78,7 +102,7 @@ SyncRentBeds overrides Bethesda's `RentRoomScript.pex`, so it conflicts with mod
 
 The native plugin modifies ownership only while the local player's crosshair is on a bed that Papyrus has explicitly marked as rented. Ordinary beds and NPC interactions are untouched.
 
-## v0.2.0 test plan
+## v0.2.x test plan
 
 1. Install the compiled Papyrus scripts and DLL on both players.
 2. Player1 enters an inn and rents the room.

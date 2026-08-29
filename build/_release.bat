@@ -13,6 +13,7 @@ set "VANILLA_SOURCE=%SKYRIM%\Data\Source\Scripts"
 
 set "PACKAGE=%PROJECT%\package"
 set "DIST=%PROJECT%\dist"
+set "DLL=%PROJECT%\build\Release\SyncRentBeds.dll"
 
 set /p VERSION=<"%PROJECT%\VERSION"
 
@@ -75,19 +76,24 @@ if not exist "%PACKAGE%\Data\SKSE\Plugins" (
     mkdir "%PACKAGE%\Data\SKSE\Plugins"
 )
 
-set "DLL="
-for /r "%PROJECT%\build" %%F in (SyncRentBeds.dll) do (
-    set "DLL=%%F"
-)
-
-if not defined DLL (
-    echo.
-    echo ERROR: SyncRentBeds.dll was not found.
+if not exist "%DLL%" (
+    echo ERROR: DLL not found:
+    echo   %DLL%
     goto :error
 )
 
-copy /y "!DLL!" "%PACKAGE%\Data\SKSE\Plugins\SyncRentBeds.dll" >nul
+echo Copying:
+echo   %DLL%
+echo to:
+echo   %PACKAGE%\Data\SKSE\Plugins\SyncRentBeds.dll
+
+copy /y "%DLL%" "%PACKAGE%\Data\SKSE\Plugins\SyncRentBeds.dll"
 if errorlevel 1 goto :error
+
+if not exist "%PACKAGE%\Data\SKSE\Plugins\SyncRentBeds.dll" (
+    echo ERROR: Packaged DLL was not created.
+    goto :error
+)
 
 echo.
 echo [5/5] Creating release archive...
@@ -104,6 +110,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "Compress-Archive -Path '%PACKAGE%\Data' -DestinationPath '%ZIP%' -Force"
 
 if errorlevel 1 goto :error
+
+if not exist "%ZIP%" (
+    echo ERROR: Release archive was not created.
+    goto :error
+)
 
 echo.
 echo ================================================

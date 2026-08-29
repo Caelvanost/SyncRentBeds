@@ -13,22 +13,11 @@ Int Property ZeroPollsToRelease = 15 Auto Hidden
 Bool RentalLatched = False
 Int ConsecutiveZeroPolls = 0
 
-Function ApplyLocalOwnership(String reason = "poll")
+Function ObserveRentalState(String reason = "poll")
     If Bed == None
-        Debug.Trace("[SyncRentBeds] ApplyLocalOwnership skipped: Bed is None")
         Return
     EndIf
 
-    If RentalLatched
-        Bed.SetActorOwner(Game.GetPlayer().GetActorBase())
-        Debug.Trace("[SyncRentBeds] Local rented-bed ownership applied. reason=" + reason + " Bed=" + Bed)
-    Else
-        Bed.SetActorOwner((self as Actor).GetActorBase())
-        Debug.Trace("[SyncRentBeds] Innkeeper ownership applied. reason=" + reason + " Bed=" + Bed)
-    EndIf
-EndFunction
-
-Function ObserveRentalState(String reason = "poll")
     Float rentalState = GetActorValue("Variable09")
 
     If rentalState >= 1.0
@@ -36,7 +25,8 @@ Function ObserveRentalState(String reason = "poll")
 
         If !RentalLatched
             RentalLatched = True
-            Debug.Trace("[SyncRentBeds] Rental latched locally. reason=" + reason + " Variable09=" + rentalState + " Bed=" + Bed)
+            SyncRentBedsNative.MarkRentedBed(Bed)
+            Debug.Trace("[SyncRentBeds] Rental latched and native bed marker enabled. reason=" + reason + " Variable09=" + rentalState + " Bed=" + Bed)
         EndIf
     ElseIf RentalLatched
         ConsecutiveZeroPolls += 1
@@ -45,11 +35,10 @@ Function ObserveRentalState(String reason = "poll")
         If ConsecutiveZeroPolls >= ZeroPollsToRelease
             RentalLatched = False
             ConsecutiveZeroPolls = 0
-            Debug.Trace("[SyncRentBeds] Rental latch released after sustained Variable09=0. Bed=" + Bed)
+            SyncRentBedsNative.ClearRentedBed(Bed)
+            Debug.Trace("[SyncRentBeds] Rental latch released and native bed marker cleared. Bed=" + Bed)
         EndIf
     EndIf
-
-    ApplyLocalOwnership(reason)
 EndFunction
 
 Function StartLocalSync(String reason = "start")
@@ -63,7 +52,10 @@ Function RentRoom(DialogueGenericScript pQuestScript)
     RentalLatched = True
     ConsecutiveZeroPolls = 0
 
+    ; Preserve Bethesda's normal ownership on the client that actually rents.
     Bed.SetActorOwner(Game.GetPlayer().GetActorBase())
+    SyncRentBedsNative.MarkRentedBed(Bed)
+
     RegisterForSingleUpdateGameTime(pQuestScript.RentHours)
     Game.GetPlayer().RemoveItem(pQuestScript.Gold, pQuestScript.RoomRentalCost.GetValueInt())
 
@@ -78,21 +70,27 @@ Function ClearRoom()
     RentalLatched = False
     ConsecutiveZeroPolls = 0
 
+    SyncRentBedsNative.ClearRentedBed(Bed)
+
+    ; Preserve vanilla cleanup on the client that owns the rental timer.
     Bed.SetActorOwner((self as Actor).GetActorBase())
     UnregisterForUpdateGameTime()
     SetActorValue("Variable09", 0.0)
 
-    Debug.Trace("[SyncRentBeds] Rental expired locally; latch cleared and innkeeper ownership restored for " + Bed)
+    Debug.Trace("[SyncRentBeds] Rental expired locally; native bed marker cleared for " + Bed)
 EndFunction
 
 Event OnCellAttach()
-    Debug.Trace("[SyncRentBeds] Innkeeper cell attached; starting local rental sync")
+    Debug.Trace("[SyncRentBeds] Innkeeper cell attached; starting rental-state observation")
     StartLocalSync("OnCellAttach")
 EndEvent
 
 Event OnCellDetach()
     UnregisterForUpdate()
-    Debug.Trace("[SyncRentBeds] Innkeeper cell detached; stopped local rental polling")
+    SyncRentBedsNative.ClearRentedBed(Bed)
+    RentalLatched = False
+    ConsecutiveZeroPolls = 0
+    Debug.Trace("[SyncRentBeds] Innkeeper cell detached; stopped observation and cleared native marker")
 EndEvent
 
 Event OnUpdate()
